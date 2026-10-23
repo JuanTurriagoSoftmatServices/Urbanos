@@ -1,0 +1,304 @@
+using Portal.Domain.Enums;
+
+namespace Portal.Domain.Entities;
+
+/// <summary>
+/// Inmueble (tabla <c>inmuebles</c>), entidad central del portal.
+/// Reglas editoriales (RF-070..078) viven aquí; la orquestación (unicidad de
+/// slug/código, conteo de imágenes para publicar) la resuelven los handlers.
+/// </summary>
+public sealed class Inmueble
+{
+    public long Id { get; private set; }
+    public string CodigoReferencia { get; private set; } = default!;
+    public string Slug { get; private set; } = default!;
+    public string Titulo { get; private set; } = default!;
+    public string? Descripcion { get; private set; }
+
+    public int TipoInmuebleId { get; private set; }
+    public long UbicacionId { get; private set; }
+
+    // Dirección privada del admin (RF-044); el público ve la cadena de ubicación
+    // jerárquica, nunca esta dirección exacta.
+    public string DireccionExacta { get; private set; } = default!;
+
+    /// <summary>Obligatoria si el tipo no es propiedad horizontal (spec 03).</summary>
+    public decimal? AreaTerrenoM2 { get; private set; }
+    public decimal? AreaConstruidaM2 { get; private set; }
+    public decimal? AreaPrivadaM2 { get; private set; }
+
+    /// <summary>URL de YouTube (recorrido virtual / dron / etc.) — spec 03.</summary>
+    public string? YoutubeUrl { get; private set; }
+
+    /// <summary>URL de embed de Google Maps (https://www.google.com/maps/embed...) — spec 03.</summary>
+    public string? MapaEmbedUrl { get; private set; }
+    public short Habitaciones { get; private set; }
+    public short Banos { get; private set; }
+    public short Parqueaderos { get; private set; }
+
+    /// <summary>
+    /// Tipos de parqueadero, selección múltiple (columna text[] tipos_parqueadero).
+    /// Vacío si no se indicaron o si <see cref="Parqueaderos"/> es 0. Siempre sin
+    /// repetidos y en el orden de <see cref="TiposParqueaderoValidos"/>.
+    /// </summary>
+    public string[] TiposParqueadero { get; private set; } = [];
+    public short? Piso { get; private set; }
+    public short? PisosEdificio { get; private set; }
+    public short? Estrato { get; private set; }
+    public string? Antiguedad { get; private set; }
+    public string? Orientacion { get; private set; }
+
+    public PoliticaMascotas PoliticaMascotas { get; private set; }
+    public string? Amoblado { get; private set; }
+
+    public string? MatriculaInmobiliaria { get; private set; }
+
+    public EstadoInmueble Estado { get; private set; }
+    public bool Destacado { get; private set; }
+
+    public string? MetaTitulo { get; private set; }
+    public string? MetaDescripcion { get; private set; }
+
+    public long? AsesorId { get; private set; }
+    public long? CreadoPor { get; private set; }
+
+    public DateTime CreadoEn { get; private set; }
+    public DateTime ActualizadoEn { get; private set; }
+    public DateTime? EliminadoEn { get; private set; }
+
+    public bool EstaEliminado => EliminadoEn is not null;
+
+    /// <summary>
+    /// RF-078: cuántos inmuebles pueden estar destacados a la vez. Son los que el
+    /// visitante ve primero (home y /inmuebles), así que más de 3 no aportan.
+    /// Único lugar donde vive el número: el frontend lo lee del resumen.
+    /// </summary>
+    public const int MaximoDestacados = 3;
+
+    /// <summary>Solo un inmueble publicado y no eliminado puede ser destacado.</summary>
+    public bool PuedeDestacarse => Estado == EstadoInmueble.Publicado && !EstaEliminado;
+
+    /// <summary>
+    /// Valores admitidos en <see cref="TiposParqueadero"/>, en el orden en que se
+    /// guardan y se muestran ("Privado", "Privado de uso exclusivo", "Doble (2 en
+    /// línea)"). Son las etiquetas del contrato de API. El CHECK
+    /// ck_inmuebles_tipos_parqueadero y el validador del comando salen de esta lista.
+    /// </summary>
+    public static readonly IReadOnlyList<string> TiposParqueaderoValidos =
+        ["privado", "privado_uso_exclusivo", "doble"];
+
+    // Constructor privado para hidratación desde repositorio (Dapper)
+    private Inmueble() { }
+
+    public static Inmueble Create(
+        string codigoReferencia,
+        string slug,
+        string titulo,
+        string? descripcion,
+        int tipoInmuebleId,
+        long ubicacionId,
+        string direccionExacta,
+        decimal? areaTerrenoM2 = null,
+        decimal? areaConstruidaM2 = null,
+        decimal? areaPrivadaM2 = null,
+        string? youtubeUrl = null,
+        string? mapaEmbedUrl = null,
+        long? asesorId = null,
+        long? creadoPor = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(codigoReferencia);
+        ArgumentException.ThrowIfNullOrWhiteSpace(slug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(titulo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(direccionExacta);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(tipoInmuebleId, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(ubicacionId, 0);
+
+        var ahora = DateTime.UtcNow;
+
+        return new Inmueble
+        {
+            CodigoReferencia = codigoReferencia,
+            Slug = slug,
+            Titulo = titulo.Trim(),
+            Descripcion = descripcion?.Trim(),
+            TipoInmuebleId = tipoInmuebleId,
+            UbicacionId = ubicacionId,
+            DireccionExacta = direccionExacta.Trim(),
+            AreaTerrenoM2 = areaTerrenoM2,
+            AreaConstruidaM2 = areaConstruidaM2,
+            AreaPrivadaM2 = areaPrivadaM2,
+            YoutubeUrl = youtubeUrl?.Trim(),
+            MapaEmbedUrl = mapaEmbedUrl?.Trim(),
+            PoliticaMascotas = PoliticaMascotas.NoPermitidas,
+            Amoblado = "no",
+            Estado = EstadoInmueble.Borrador,
+            Destacado = false,
+            AsesorId = asesorId,
+            CreadoPor = creadoPor,
+            CreadoEn = ahora,
+            ActualizadoEn = ahora
+        };
+    }
+
+    /// <summary>Actualiza los datos editables (RF-072). No toca código, slug ni estado.</summary>
+    public void ActualizarDatos(
+        string titulo,
+        string? descripcion,
+        int tipoInmuebleId,
+        long ubicacionId,
+        string direccionExacta,
+        decimal? areaTerrenoM2,
+        decimal? areaConstruidaM2,
+        decimal? areaPrivadaM2,
+        string? youtubeUrl,
+        string? mapaEmbedUrl,
+        short habitaciones,
+        short banos,
+        short parqueaderos,
+        IReadOnlyCollection<string>? tiposParqueadero,
+        short? piso,
+        short? pisosEdificio,
+        short? estrato,
+        string? antiguedad,
+        string? orientacion,
+        PoliticaMascotas politicaMascotas,
+        string? amoblado,
+        string? matriculaInmobiliaria,
+        string? metaTitulo,
+        string? metaDescripcion,
+        long? asesorId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(titulo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(direccionExacta);
+
+        if (estrato is < 1 or > 6)
+        {
+            throw new ArgumentOutOfRangeException(nameof(estrato), "El estrato debe estar entre 1 y 6.");
+        }
+
+        // Se calcula antes de asignar nada: si lanza, la entidad queda intacta.
+        var tipos = NormalizarTiposParqueadero(parqueaderos, tiposParqueadero);
+
+        Titulo = titulo.Trim();
+        Descripcion = descripcion?.Trim();
+        TipoInmuebleId = tipoInmuebleId;
+        UbicacionId = ubicacionId;
+        DireccionExacta = direccionExacta.Trim();
+        AreaTerrenoM2 = areaTerrenoM2;
+        AreaConstruidaM2 = areaConstruidaM2;
+        AreaPrivadaM2 = areaPrivadaM2;
+        YoutubeUrl = youtubeUrl?.Trim();
+        MapaEmbedUrl = mapaEmbedUrl?.Trim();
+        Habitaciones = habitaciones;
+        Banos = banos;
+        Parqueaderos = parqueaderos;
+        TiposParqueadero = tipos;
+        Piso = piso;
+        PisosEdificio = pisosEdificio;
+        Estrato = estrato;
+        Antiguedad = antiguedad;
+        Orientacion = orientacion;
+        PoliticaMascotas = politicaMascotas;
+        Amoblado = amoblado;
+        MatriculaInmobiliaria = matriculaInmobiliaria;
+        MetaTitulo = metaTitulo;
+        MetaDescripcion = metaDescripcion;
+        AsesorId = asesorId;
+        MarcarActualizado();
+    }
+
+    /// <summary>
+    /// Cambia el estado editorial (RF-075). La validación de publicación
+    /// (imágenes + campos obligatorios, RF-077) se hace en el handler porque
+    /// requiere consultar imágenes y operaciones.
+    /// </summary>
+    public void CambiarEstado(EstadoInmueble nuevoEstado)
+    {
+        if (EstaEliminado)
+        {
+            throw new InvalidOperationException("No se puede cambiar el estado de un inmueble eliminado.");
+        }
+
+        if (nuevoEstado != Estado)
+        {
+            // Un destacado ocupa uno de los MaximoDestacados cupos. Si deja de estar
+            // publicado desaparece del sitio pero seguiría ocupando el cupo. Por eso
+            // cualquier cambio real de estado lo desmarca. Así también se limpian las
+            // marcas heredadas de antes de esta regla cuando un borrador o un pausado
+            // vuelve a publicarse.
+            Destacado = false;
+        }
+
+        Estado = nuevoEstado;
+        MarcarActualizado();
+    }
+
+    /// <summary>
+    /// RF-077: campos mínimos que exige la publicación (las imágenes se validan
+    /// aparte). Descripción NO está aquí a propósito: es opcional en todo el
+    /// ciclo de vida del inmueble (así lo trata el schema del frontend) — antes
+    /// se exigía solo en este paso, sin avisar en el formulario de creación, lo
+    /// que producía un error sorpresivo al publicar.
+    /// </summary>
+    public bool TieneCamposObligatoriosParaPublicar()
+        => !string.IsNullOrWhiteSpace(Titulo)
+           && TipoInmuebleId > 0
+           && UbicacionId > 0
+           && !string.IsNullOrWhiteSpace(DireccionExacta);
+
+    /// <summary>
+    /// Marca o desmarca como destacado (RF-078). El límite de
+    /// <see cref="MaximoDestacados"/> no se valida aquí: necesita contar en BD bajo
+    /// bloqueo y lo resuelve el repositorio (DestacarConCupoAsync).
+    /// </summary>
+    public void MarcarDestacado(bool destacado)
+    {
+        if (destacado && !PuedeDestacarse)
+        {
+            throw new InvalidOperationException("Solo un inmueble publicado puede destacarse.");
+        }
+
+        Destacado = destacado;
+        MarcarActualizado();
+    }
+
+    /// <summary>Borrado lógico (RF-073): conserva el registro, lo saca del sitio público.</summary>
+    public void EliminarLogico()
+    {
+        EliminadoEn = DateTime.UtcNow;
+        Estado = EstadoInmueble.Archivado;
+        Destacado = false;
+        MarcarActualizado();
+    }
+
+    /// <summary>
+    /// Deja los tipos de parqueadero como se guardan. Sin parqueaderos no hay tipo.
+    /// Si los hay, van sin repetidos y en el orden de <see cref="TiposParqueaderoValidos"/>.
+    /// Un valor desconocido o repetido es un error de programación: el validador del
+    /// comando ya lo rechaza con 400 antes de llegar aquí.
+    /// </summary>
+    private static string[] NormalizarTiposParqueadero(
+        short parqueaderos, IReadOnlyCollection<string>? tipos)
+    {
+        if (tipos is null || tipos.Count == 0)
+        {
+            return [];
+        }
+
+        if (tipos.Any(t => t is null || !TiposParqueaderoValidos.Contains(t)))
+        {
+            throw new ArgumentException("Tipo de parqueadero inválido.", nameof(tipos));
+        }
+
+        if (tipos.Distinct().Count() != tipos.Count)
+        {
+            throw new ArgumentException("Tipo de parqueadero repetido.", nameof(tipos));
+        }
+
+        return parqueaderos > 0
+            ? TiposParqueaderoValidos.Where(t => tipos.Contains(t)).ToArray()
+            : [];
+    }
+
+    private void MarcarActualizado() => ActualizadoEn = DateTime.UtcNow;
+}

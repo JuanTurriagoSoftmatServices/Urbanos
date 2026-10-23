@@ -1,0 +1,88 @@
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
+import { PublicLayout } from '@/app/layouts/PublicLayout'
+import { AdminLayout } from '@/app/layouts/AdminLayout'
+import { AuthGuard } from '@/app/router/AuthGuard'
+
+// ─── Páginas públicas ─────────────────────────────────────────────────────────
+import { HomePage } from '@/features/public/properties/pages/HomePage'
+import { InmueblesListPage } from '@/features/public/properties/pages/InmueblesListPage'
+import { InmuebleDetallePage } from '@/features/public/properties/pages/InmuebleDetallePage'
+
+// ─── Páginas admin ────────────────────────────────────────────────────────────
+import { LoginPage } from '@/features/admin/auth/pages/LoginPage'
+import { RolesPage } from '@/features/admin/users/pages/RolesPage'
+import { InmueblesPage } from '@/features/admin/properties/pages/InmueblesPage'
+import { InmuebleFormPage } from '@/features/admin/properties/pages/InmuebleFormPage'
+import { InmuebleEditarPage } from '@/features/admin/properties/pages/InmuebleEditarPage'
+import { UbicacionesAdminPage } from '@/features/admin/catalogos/pages/UbicacionesAdminPage'
+import { TiposInmuebleAdminPage } from '@/features/admin/catalogos/pages/TiposInmuebleAdminPage'
+import { CaracteristicasAdminPage } from '@/features/admin/catalogos/pages/CaracteristicasAdminPage'
+import { ProyectosAdminListPage } from '@/features/admin/proyectos/pages/ProyectosAdminListPage'
+import { ProyectoAdminFormPage } from '@/features/admin/proyectos/pages/ProyectoAdminFormPage'
+import { ProyectosListPage } from '@/features/public/proyectos/pages/ProyectosListPage'
+import { ProyectoDetallePage } from '@/features/public/proyectos/pages/ProyectoDetallePage'
+import { QuienesSomosPage } from '@/features/public/institucional/pages/QuienesSomosPage'
+
+const router = createBrowserRouter([
+  // ─── Rutas públicas ──────────────────────────────────────────────────────
+  {
+    element: <PublicLayout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: 'inmuebles', element: <InmueblesListPage /> },
+      { path: 'inmuebles/:slug', element: <InmuebleDetallePage /> },
+      { path: 'proyectos', element: <ProyectosListPage /> },
+      { path: 'proyectos/:slug', element: <ProyectoDetallePage /> },
+      { path: 'quienes-somos', element: <QuienesSomosPage /> },
+      { path: 'properties', element: <div className="p-8">Propiedades — próximamente</div> },
+      { path: 'search', element: <div className="p-8">Búsqueda — próximamente</div> },
+    ],
+  },
+
+  // ─── Login (sin layout admin) ─────────────────────────────────────────────
+  { path: '/admin/login', element: <LoginPage /> },
+
+  // ─── Rutas admin (protegidas) ─────────────────────────────────────────────
+  {
+    path: '/admin',
+    element: <AuthGuard />,
+    children: [
+      {
+        element: <AdminLayout />,
+        children: [
+          // Una ruta no puede ser índice y tener path a la vez: React Router
+          // ignora el flag y la registra solo como '/admin/properties', dejando
+          // '/admin' sin nada que renderizar en el Outlet (pantalla en blanco).
+          { index: true, element: <Navigate to="/admin/properties" replace /> },
+          { path: 'properties', element: <InmueblesPage /> },
+          { path: 'properties/nuevo', element: <InmuebleFormPage /> },
+          { path: 'properties/:id/editar', element: <InmuebleEditarPage /> },
+          { path: 'users', element: <RolesPage /> },
+          { path: 'catalogos/ubicaciones', element: <UbicacionesAdminPage /> },
+          { path: 'catalogos/tipos-inmueble', element: <TiposInmuebleAdminPage /> },
+          { path: 'catalogos/caracteristicas', element: <CaracteristicasAdminPage /> },
+          { path: 'proyectos', element: <ProyectosAdminListPage /> },
+          { path: 'proyectos/nuevo', element: <ProyectoAdminFormPage /> },
+          { path: 'proyectos/:id/editar', element: <ProyectoAdminFormPage /> },
+        ],
+      },
+    ],
+  },
+
+  // ─── 404 ──────────────────────────────────────────────────────────────────
+  {
+    path: '*',
+    element: (
+      <div className="flex h-screen items-center justify-center font-sans">
+        <div className="text-center">
+          <h1 className="text-6xl font-bold text-brand-600">404</h1>
+          <p className="mt-2 text-text-secondary">Página no encontrada</p>
+        </div>
+      </div>
+    ),
+  },
+])
+
+export function AppRouter() {
+  return <RouterProvider router={router} />
+}
